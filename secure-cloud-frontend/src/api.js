@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'https://securecloudstorage-production.up.railway.app/',
+  baseURL: 'http://13.50.16.146:5000',
 });
 
 // Upload file
