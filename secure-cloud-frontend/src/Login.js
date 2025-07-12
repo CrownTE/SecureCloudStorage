@@ -17,7 +17,7 @@ const Login = () => {
     }
 
     try {
-      const response = await fetch("https://securecloudstorage-production.up.railway.app/login", {
+      const response = await fetch("http://13.60.220.188:5000/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
