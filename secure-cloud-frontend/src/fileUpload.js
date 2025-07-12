@@ -7,7 +7,7 @@ const FileUpload = () => {
 
     useEffect(() => {
         async function fetchPublicKey() {
-            const response = await axios.get("https://securecloudstorage-production.up.railway.app/public-key");
+            const response = await axios.get("http://13.60.220.188:5000/public-key");
             setPublicKey(response.data.ecPublicKey);
         }
         fetchPublicKey();
@@ -24,7 +24,7 @@ const FileUpload = () => {
         formData.append("file", file);
 
         try {
-            await axios.post("https://securecloudstorage-production.up.railway.app/upload", formData);
+            await axios.post("http://13.60.220.188:5000/upload", formData);
             alert("File uploaded and encrypted!");
         } catch (error) {
             console.error("Upload failed:", error);
