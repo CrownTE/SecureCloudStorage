@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'http://13.50.16.146:5000',
+  baseURL: 'http://13.60.220.188:5000',
 });
 
 // Upload file
