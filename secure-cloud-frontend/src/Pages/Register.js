@@ -18,7 +18,7 @@ const Register = () => {
     }
 
     try {
-      const response = await fetch("https://securecloudstorage-production.up.railway.app/register", {
+      const response = await fetch("http://13.60.220.188:5000/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -29,7 +29,7 @@ const Register = () => {
       const data = await response.json();
       if (response.ok) {
         // 🔐 AUTO-LOGIN after successful registration
-        const loginResponse = await fetch("https://securecloudstorage-production.up.railway.app/login", {
+        const loginResponse = await fetch("http://13.60.220.188:5000/login", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
