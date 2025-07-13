@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'http://13.60.220.188:5000',
+  baseURL: ' https://accessed-scenic-advertisement-never.trycloudflare.com',
 });
 
 // Upload file
