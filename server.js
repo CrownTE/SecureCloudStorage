@@ -7,18 +7,20 @@ const cors = require("cors");
 const { ec: EC } = require("elliptic");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const AWS = require("aws-sdk");
+
+// AWS SDK v3 imports
+const { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// AWS config
-const s3 = new AWS.S3({
-  endpoint: 'https://s3.eu-north-1.amazonaws.com',
-  region: 'eu-north-1',
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  s3ForcePathStyle: false,
+// AWS S3 client configuration
+const s3Client = new S3Client({
+  region: "eu-north-1",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
 });
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -35,6 +37,13 @@ let aesKey;
 let keyPair;
 
 function loadKeysFromEnv() {
+  if (!process.env.AES_KEY) {
+    throw new Error('AES_KEY environment variable is not defined');
+  }
+  if (!process.env.EC_PRIVATE_KEY) {
+    throw new Error('EC_PRIVATE_KEY environment variable is not defined');
+  }
+  
   aesKey = Buffer.from(process.env.AES_KEY, "hex");
   keyPair = ec.keyFromPrivate(process.env.EC_PRIVATE_KEY);
 }
@@ -88,62 +97,81 @@ app.post("/login", async (req, res) => {
 });
 
 // 📤 Upload (to user-specific folder)
-app.post("/upload", authenticateToken, upload.single("file"), (req, res) => {
-  const username = req.user.username;
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", aesKey, iv);
-  const encrypted = Buffer.concat([iv, cipher.update(req.file.buffer), cipher.final()]);
+app.post("/upload", authenticateToken, upload.single("file"), async (req, res) => {
+  try {
+    const username = req.user.username;
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-cbc", aesKey, iv);
+    const encrypted = Buffer.concat([iv, cipher.update(req.file.buffer), cipher.final()]);
 
-  const key = `${username}/encrypted-${Date.now()}-${req.file.originalname}`;
-  const params = {
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Key: key,
-    Body: encrypted,
-  };
+    const key = `${username}/encrypted-${Date.now()}-${req.file.originalname}`;
+    
+    const command = new PutObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      Body: encrypted,
+    });
 
-  s3.upload(params, (err, data) => {
-    if (err) return res.status(500).json({ error: "Upload failed" });
-    res.json({ message: "File uploaded", fileUrl: data.Location });
-  });
+    const data = await s3Client.send(command);
+    const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.eu-north-1.amazonaws.com/${key}`;
+    
+    res.json({ message: "File uploaded", fileUrl });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ error: "Upload failed" });
+  }
 });
 
 // 📄 List files for the logged-in user
-app.get("/files", authenticateToken, (req, res) => {
-  const prefix = `${req.user.username}/`;
+app.get("/files", authenticateToken, async (req, res) => {
+  try {
+    const prefix = `${req.user.username}/`;
 
-  const params = {
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Prefix: prefix,
-  };
+    const command = new ListObjectsV2Command({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Prefix: prefix,
+    });
 
-  s3.listObjectsV2(params, (err, data) => {
-    if (err) return res.status(500).json({ error: "Error listing files" });
-
+    const data = await s3Client.send(command);
     const files = (data.Contents || []).map(obj => obj.Key.replace(prefix, ""));
+    
     res.json({ files });
-  });
+  } catch (err) {
+    console.error("List files error:", err);
+    res.status(500).json({ error: "Error listing files" });
+  }
 });
 
 // 📥 Download user's own file
-app.get("/download/:filename", authenticateToken, (req, res) => {
-  const key = `${req.user.username}/${req.params.filename}`;
+app.get("/download/:filename", authenticateToken, async (req, res) => {
+  try {
+    const key = `${req.user.username}/${req.params.filename}`;
 
-  const params = {
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Key: key,
-  };
+    const command = new GetObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+    });
 
-  s3.getObject(params, (err, data) => {
-    if (err) return res.status(404).json({ error: "File not found" });
+    const data = await s3Client.send(command);
+    
+    // Convert stream to buffer for v3
+    const chunks = [];
+    for await (const chunk of data.Body) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
 
-    const iv = data.Body.slice(0, 16);
-    const encrypted = data.Body.slice(16);
+    const iv = buffer.slice(0, 16);
+    const encrypted = buffer.slice(16);
     const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, iv);
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
 
     res.set("Content-Disposition", `attachment; filename="${req.params.filename.replace("encrypted-", "")}"`);
     res.send(decrypted);
-  });
+  } catch (err) {
+    console.error("Download error:", err);
+    res.status(404).json({ error: "File not found" });
+  }
 });
 
 app.listen(port, () => console.log(`Server running on http://localhost:${port}`));
