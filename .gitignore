@@ -1,0 +1,12 @@
+# Node
+node_modules/
+.env
+
+# React
+secure-cloud-frontend/node_modules/
+
+# Others
+uploads/
+dist/
+build/
+.DS_Store
